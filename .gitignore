@@ -1,5 +1,6 @@
 # Docker / Variables de entorno
 .env
+.env.example
 
 # Directorios de datos (n8n, bases de datos locales si llegaran a existir)
 .n8n/
