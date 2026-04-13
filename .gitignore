@@ -1,0 +1,16 @@
+# Docker / Variables de entorno
+.env
+
+# Directorios de datos (n8n, bases de datos locales si llegaran a existir)
+.n8n/
+n8n_data/
+*/data/
+
+# Archivos de SO
+.DS_Store
+Thumbs.db
+
+# Editores y entornos locales
+.vscode/
+.idea/
+*.swp
