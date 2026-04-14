@@ -1,4 +1,3 @@
-version: '3.8'
 
 volumes:
   n8n_data:
@@ -18,3 +17,10 @@ services:
       - GENERIC_TIMEZONE=${TIMEZONE:-America/Argentina/Buenos_Aires}
     volumes:
       - n8n_data:/home/node/.n8n
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --url http://n8n:5678
+    restart: unless-stopped
+    depends_on:
+      - n8n
