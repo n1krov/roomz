@@ -4,16 +4,13 @@ if (!input.message || !input.message.text) return [];
 const text = input.message.text.trim();
 const senderId = input.message.from.id;
 
-
+// Tus IDs reales
 const lau_id = 1923692633;
 const cholo_id = 7283795641;
 
 // -- SEGURIDAD --
-if (senderId !== lau_id && senderId !== cholo_id) {
-  return [];
-}
+if (senderId !== lau_id && senderId !== cholo_id) return [];
 
-// identificar quien manda el mensaje 
 const isLau = (senderId === lau_id);
 const senderName = isLau ? "Lau" : "Cholo";
 const otherName = isLau ? "Cholo" : "Lau";
@@ -30,7 +27,6 @@ if (text.toLowerCase().startsWith('/help')) {
     json: {
       comando: "help",
       Notificar_A: chatId,
-      Mensaje: "🤖 *Comandos Roomz:*\n\n🛒 `/gasto [nombre] <monto> <concepto>`\nEj: `/gasto 5000 pizza` (Asume que pagó el que manda el mensaje por los dos - 50/50).\nEj: `/gasto cholo 3000 pan` (Fuerza a que pagó Cholo por los dos - 50/50).\n\n💸 `/deuda <monto> <concepto>`\nEj: `/deuda 2000 puchos` (Asume que VOS le debés el 100% de ese gasto a la otra persona).\n\n⚖️ `/balance`\nMuestra los saldos del mes actual."
     }
   }];
 }
@@ -46,30 +42,68 @@ if (text.toLowerCase().startsWith('/balance')) {
   }];
 }
 
-// --- COMANDO: /DEUDA ---
-const regexDeuda = /^\/deuda\s+(\d+(?:[.,]\d+)?)\s+(.+)$/i;
-const matchDeuda = text.match(regexDeuda);
+// --- COMANDO: /DEVOLUCION ---
+// Regex soporta concepto opcional al final
+const regexDevolucion = /^\/devolucion(?:\s+(lau|cholo))?\s+(\d+(?:[.,]\d+)?)(?:\s+(.+))?$/i;
+const matchDevolucion = text.match(regexDevolucion);
 
-if (matchDeuda) {
-  const monto = parseFloat(matchDeuda[1].replace(',', '.'));
-  const concepto = matchDeuda[2];
+if (matchDevolucion) {
+  const explicitWho = matchDevolucion[1] ? matchDevolucion[1].toLowerCase() : null;
+  const monto = parseFloat(matchDevolucion[2].replace(',', '.'));
+  const concepto = matchDevolucion[3] || "Devolución de plata";
+
+  // Si ponés "/devolucion 500", YO estoy poniendo la plata para saldar deuda.
+  // Si ponés "/devolucion cholo 500", CHOLO me está dando la plata a mi.
+  let quien_pago = senderName;
+  if (explicitWho) {
+    quien_pago = explicitWho === 'cholo' ? 'Cholo' : 'Lau';
+  }
 
   return [{
     json: {
-      comando: "gasto", // lo mandamos como gasto para que vaya a la misma hoja de Sheets
+      comando: "gasto", // Lo mandamos como gasto para que el calculador lo procese normal
       ID: Date.now().toString(),
       Fecha: fecha,
       Mes_Periodo: mes_periodo,
       Concepto: concepto,
       Monto_Total: monto,
-      Quien_Pago: otherName, // el que pago en realidad es la otra persona
-      Tipo_Reparto: 100, // 100% de la deuda 
+      Quien_Pago: quien_pago,
+      Tipo_Reparto: 100, // Resta directo del balance
       Notificar_A: chatId
     }
   }];
 }
 
-// --- COMANDO: /GASTO ---
+// --- COMANDO: /DEUDA (100%) ---
+const regexDeuda = /^\/deuda(?:\s+(lau|cholo))?\s+(\d+(?:[.,]\d+)?)\s+(.+)$/i;
+const matchDeuda = text.match(regexDeuda);
+
+if (matchDeuda) {
+  const explicitWho = matchDeuda[1] ? matchDeuda[1].toLowerCase() : null;
+  const monto = parseFloat(matchDeuda[2].replace(',', '.'));
+  const concepto = matchDeuda[3];
+
+  let quien_pago = otherName;
+  if (explicitWho) {
+    quien_pago = explicitWho === 'cholo' ? 'Lau' : 'Cholo';
+  }
+
+  return [{
+    json: {
+      comando: "gasto",
+      ID: Date.now().toString(),
+      Fecha: fecha,
+      Mes_Periodo: mes_periodo,
+      Concepto: concepto,
+      Monto_Total: monto,
+      Quien_Pago: quien_pago,
+      Tipo_Reparto: 100,
+      Notificar_A: chatId
+    }
+  }];
+}
+
+// --- COMANDO: /GASTO (50/50) ---
 const regexGasto = /^\/gasto(?:\s+(lau|cholo))?\s+(\d+(?:[.,]\d+)?)\s+(.+)$/i;
 const matchGasto = text.match(regexGasto);
 
@@ -78,7 +112,7 @@ if (matchGasto) {
   const monto = parseFloat(matchGasto[2].replace(',', '.'));
   const concepto = matchGasto[3];
 
-  let quien_pago = senderName; // el que envia el msj pro default
+  let quien_pago = senderName;
   if (explicitWho) {
     quien_pago = explicitWho === 'cholo' ? 'Cholo' : 'Lau';
   }
@@ -92,10 +126,10 @@ if (matchGasto) {
       Concepto: concepto,
       Monto_Total: monto,
       Quien_Pago: quien_pago,
-      Tipo_Reparto: 50, // Siempre 50/50
+      Tipo_Reparto: 50,
       Notificar_A: chatId
     }
   }];
 }
 
-return []; //si no matchea entonce no hace un carajo...
+return [];
