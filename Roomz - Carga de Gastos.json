@@ -1,0 +1,650 @@
+{
+  "name": "Roomz - Carga de Gastos",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "b57c96c3-c909-4c59-8317-0569b39d527e",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -80
+      ],
+      "webhookId": "roomz-webhook-telegram-gastos",
+      "credentials": {
+        "telegramApi": {
+          "id": "419CRr0N4sXvLrmC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nif (!input.message || !input.message.text) return [];\n\nconst text = input.message.text.trim();\nconst senderId = input.message.from.id;\n\n// Tus IDs reales\nconst lau_id = 1923692633;\nconst cholo_id = 7283795641;\n\n// -- SEGURIDAD --\nif (senderId !== lau_id && senderId !== cholo_id) return [];\n\nconst isLau = (senderId === lau_id);\nconst senderName = isLau ? \"Lau\" : \"Cholo\";\nconst otherName = isLau ? \"Cholo\" : \"Lau\";\n\nconst act = new Date();\nconst meses = [\"enero\", \"febrero\", \"marzo\", \"abril\", \"mayo\", \"junio\", \"julio\", \"agosto\", \"septiembre\", \"octubre\", \"noviembre\", \"diciembre\"];\nconst mes_periodo = `${meses[act.getMonth()]}-${act.getFullYear()}`;\nconst fecha = act.toLocaleDateString('es-AR');\nconst chatId = input.message.chat.id;\n\n// --- COMANDO: /HELP ---\nif (text.toLowerCase().startsWith('/help')) {\n  return [{\n    json: {\n      comando: \"help\",\n      Notificar_A: chatId,\n    }\n  }];\n}\n\n// --- COMANDO: /BALANCE ---\nif (text.toLowerCase().startsWith('/balance')) {\n  return [{\n    json: {\n      comando: \"balance\",\n      Mes_Periodo: mes_periodo,\n      Notificar_A: chatId\n    }\n  }];\n}\n\n// --- COMANDO: /DEVOLUCION ---\n// Regex soporta concepto opcional al final\nconst regexDevolucion = /^\\/devolucion(?:\\s+(lau|cholo))?\\s+(\\d+(?:[.,]\\d+)?)(?:\\s+(.+))?$/i;\nconst matchDevolucion = text.match(regexDevolucion);\n\nif (matchDevolucion) {\n  const explicitWho = matchDevolucion[1] ? matchDevolucion[1].toLowerCase() : null;\n  const monto = parseFloat(matchDevolucion[2].replace(',', '.'));\n  const concepto = matchDevolucion[3] || \"Devolución de plata\";\n\n  let quien_pago = senderName;\n  if (explicitWho) {\n    quien_pago = explicitWho === 'cholo' ? 'Cholo' : 'Lau';\n  }\n\n  return [{\n    json: {\n      comando: \"gasto\",\n      ID: Date.now().toString(),\n      Fecha: fecha,\n      Mes_Periodo: mes_periodo,\n      Concepto: concepto,\n      Monto_Total: monto,\n      Quien_Pago: quien_pago,\n      Tipo_Reparto: 100, // Resta directo del balance\n      Notificar_A: chatId\n    }\n  }];\n}\n\n// --- COMANDO: /DEUDA (100%) ---\nconst regexDeuda = /^\\/deuda(?:\\s+(lau|cholo))?\\s+(\\d+(?:[.,]\\d+)?)\\s+(.+)$/i;\nconst matchDeuda = text.match(regexDeuda);\n\nif (matchDeuda) {\n  const explicitWho = matchDeuda[1] ? matchDeuda[1].toLowerCase() : null;\n  const monto = parseFloat(matchDeuda[2].replace(',', '.'));\n  const concepto = matchDeuda[3];\n\n  let quien_pago = otherName; \n  if (explicitWho) {\n    quien_pago = explicitWho === 'cholo' ? 'Lau' : 'Cholo';\n  }\n\n  return [{\n    json: {\n      comando: \"gasto\",\n      ID: Date.now().toString(),\n      Fecha: fecha,\n      Mes_Periodo: mes_periodo,\n      Concepto: concepto,\n      Monto_Total: monto,\n      Quien_Pago: quien_pago,\n      Tipo_Reparto: 100,\n      Notificar_A: chatId\n    }\n  }];\n}\n\n// --- COMANDO: /GASTO (50/50) ---\nconst regexGasto = /^\\/gasto(?:\\s+(lau|cholo))?\\s+(\\d+(?:[.,]\\d+)?)\\s+(.+)$/i;\nconst matchGasto = text.match(regexGasto);\n\nif (matchGasto) {\n  const explicitWho = matchGasto[1] ? matchGasto[1].toLowerCase() : null;\n  const monto = parseFloat(matchGasto[2].replace(',', '.'));\n  const concepto = matchGasto[3];\n\n  let quien_pago = senderName;\n  if (explicitWho) {\n    quien_pago = explicitWho === 'cholo' ? 'Cholo' : 'Lau';\n  }\n\n  return [{\n    json: {\n      comando: \"gasto\",\n      ID: Date.now().toString(),\n      Fecha: fecha,\n      Mes_Periodo: mes_periodo,\n      Concepto: concepto,\n      Monto_Total: monto,\n      Quien_Pago: quien_pago,\n      Tipo_Reparto: 50,\n      Notificar_A: chatId\n    }\n  }];\n}\n\nreturn [];"
+      },
+      "id": "837d6959-832f-4ac0-919c-720fb74c847d",
+      "name": "Parsear Datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.comando }}",
+                    "rightValue": "gasto",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "aa03c1a8-b7dd-4a20-9860-0e991673077a"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "57e3136a-eae4-4e2f-ad6d-5ef31de290e3",
+                    "leftValue": "={{ $json.comando }}",
+                    "rightValue": "balance",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1b92df0c-c2fb-47af-b67e-4182d4b33278",
+                    "leftValue": "={{ $json.comando }}",
+                    "rightValue": "help",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        416,
+        -96
+      ],
+      "id": "428f1ab3-e882-4863-8384-26a7637a3a9b",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Transacciones",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $json.ID }}",
+            "Fecha": "={{ $json.Fecha }}",
+            "Mes_Periodo": "={{ $json.Mes_Periodo }}",
+            "Concepto": "={{ $json.Concepto }}",
+            "Monto_Total": "={{ $json.Monto_Total }}",
+            "Quien_Pago": "={{ $json.Quien_Pago }}",
+            "comando": "={{ $json.comando }}",
+            "Notificar_A": "={{ $json.Notificar_A }}",
+            "Tipo_Reparto": "={{ $json.Tipo_Reparto }}"
+          },
+          "matchingColumns": [
+            "ID"
+          ],
+          "schema": [
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Mes_Periodo",
+              "displayName": "Mes_Periodo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Concepto",
+              "displayName": "Concepto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Monto_Total",
+              "displayName": "Monto_Total",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Quien_Pago",
+              "displayName": "Quien_Pago",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "comando",
+              "displayName": "comando",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Notificar_A",
+              "displayName": "Notificar_A",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tipo_Reparto",
+              "displayName": "Tipo_Reparto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        640,
+        -272
+      ],
+      "id": "3b4bb9a7-b534-450e-9af8-325295d9c236",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "b9PffwovA9JM9CTN",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE",
+          "mode": "list",
+          "cachedResultName": "Roomz DB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Transacciones",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Mes_Periodo",
+              "lookupValue": "={{ $('Parsear Datos').item.json.Mes_Periodo }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        864,
+        -272
+      ],
+      "id": "050a9e04-dd14-4876-8d23-ced28b2bfc75",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "b9PffwovA9JM9CTN",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE",
+          "mode": "list",
+          "cachedResultName": "Roomz DB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1261127630,
+          "mode": "list",
+          "cachedResultName": "Balance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE/edit#gid=1261127630"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Mes_Periodo": "={{ $json.Mes_Periodo }}",
+            "Gasto_Total_Mes": "={{ $json.Gasto_Total_Mes }}",
+            "Aporte_Lau": "={{ $json.Aporte_Lau }}",
+            "Aporte_Cholo": "={{ $json.Aporte_Cholo }}",
+            "Saldo_Lau": "={{ $json.Saldo_Lau }}",
+            "Saldo_Cholo": "={{ $json.Saldo_Cholo }}"
+          },
+          "matchingColumns": [
+            "Mes_Periodo"
+          ],
+          "schema": [
+            {
+              "id": "Mes_Periodo",
+              "displayName": "Mes_Periodo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Gasto_Total_Mes",
+              "displayName": "Gasto_Total_Mes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Aporte_Lau",
+              "displayName": "Aporte_Lau",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Aporte_Cholo",
+              "displayName": "Aporte_Cholo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Saldo_Lau",
+              "displayName": "Saldo_Lau",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Saldo_Cholo",
+              "displayName": "Saldo_Cholo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1312,
+        -272
+      ],
+      "id": "8ffb5de1-93e0-41a7-a572-2dc6eff8e766",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "b9PffwovA9JM9CTN",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parsear Datos').item.json.Notificar_A }}",
+        "text": "=✅ Gasto registrado correctamente.\n\n    📊 Balance de {{ $json.Mes_Periodo }}:\n    • Total mes: ${{ $json.Gasto_Total_Mes }}\n    • Saldo Lau: ${{ $json.Saldo_Lau }}\n    • Saldo Cholo: ${{ $json.Saldo_Cholo }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        -272
+      ],
+      "id": "1d73a58f-be61-46ab-bf85-a6724a8a3efe",
+      "name": "Send a text message",
+      "webhookId": "b9bb35e3-cd21-4444-a2cc-3869046c6025",
+      "credentials": {
+        "telegramApi": {
+          "id": "419CRr0N4sXvLrmC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE",
+          "mode": "list",
+          "cachedResultName": "Roomz DB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1261127630,
+          "mode": "list",
+          "cachedResultName": "Balance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16vzNSsGHjrH_a8dd-HiuE_5sJuFjhwcRWSMKaO10ciE/edit#gid=1261127630"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Mes_Periodo",
+              "lookupValue": "={{ $json.Mes_Periodo }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        640,
+        -80
+      ],
+      "id": "e8487b81-88d0-4175-bf52-4bd480e292b5",
+      "name": "Get row(s) in sheet1",
+      "credentials": {
+        "googleApi": {
+          "id": "b9PffwovA9JM9CTN",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parsear Datos').item.json.Notificar_A }}",
+        "text": "=📊 Estado de Cuentas: {{ $json.Mes_Periodo }}\n\n💰 Gasto Total: ${{ $json.Gasto_Total_Mes }}\n👤 Aporte Lau: ${{ $json.Aporte_Lau }}\n👤 Aporte Cholo: ${{ $json.Aporte_Cholo }}\n\n⚖️ Resultado:\n{{ $json.Saldo_Lau > 0 ? \"✅ Cholo le debe a Lau: $\" + $json.Saldo_Lau : $json.Saldo_Lau < 0 ? \"✅ Lau le debe a Cholo: $\" + Math.abs($json.Saldo_Lau) : \"🙌 ¡Están al día!\" }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        864,
+        -80
+      ],
+      "id": "75ca108c-c957-45b5-bfcf-eada3a327fcd",
+      "name": "Send a text message1",
+      "webhookId": "b9bb35e3-cd21-4444-a2cc-3869046c6025",
+      "credentials": {
+        "telegramApi": {
+          "id": "419CRr0N4sXvLrmC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const transacciones = $input.all(); \nconst infoGastoActual = $('Parsear Datos').item.json;\nconst mesActual = infoGastoActual.Mes_Periodo;\n\nlet totalMes = 0;\nlet aporteLau50 = 0, aporteCholo50 = 0;\nlet aporteLau100 = 0, aporteCholo100 = 0;\n\nfor (const row of transacciones) {\n  const data = row.json;\n  const monto = parseFloat(data.Monto_Total) || 0;\n  const reparto = parseInt(data.Tipo_Reparto) || 50;\n\n  totalMes += monto;\n\n  if (data.Quien_Pago === 'Lau') {\n    if (reparto === 50) aporteLau50 += monto;\n    else aporteLau100 += monto;\n  } else {\n    if (reparto === 50) aporteCholo50 += monto;\n    else aporteCholo100 += monto;\n  }\n}\n\n// Tu lógica: ((Lau50 - Cholo50) / 2) + Lau100 - Cholo100\nconst saldoLau = ((aporteLau50 - aporteCholo50) / 2) + aporteLau100 - aporteCholo100;\n\nreturn {\n  Mes_Periodo: mesActual,\n  Gasto_Total_Mes: totalMes,\n  Aporte_Lau: aporteLau50 + aporteLau100,\n  Aporte_Cholo: aporteCholo50 + aporteCholo100,\n  Saldo_Lau: saldoLau,\n  Saldo_Cholo: -saldoLau,\n  Notificar_A: infoGastoActual.Notificar_A \n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        -272
+      ],
+      "id": "6e37e0dd-aa4f-4e78-b9a7-467c3470e117",
+      "name": "CaclcularBalance"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parsear Datos').item.json.Notificar_A }}",
+        "text": "=🏠 *Guía Rápida de Roomz*\n\n💰 *GASTOS (50/50)*\nSi compraron algo para la casa:\n• `/gasto 5000 fideos` _(Si pagaste VOS)_\n• `/gasto cholo 1200 pan` _(Si pagó ÉL)_\n\n💸 *DEUDAS (100%)*\nSi uno pagó algo que es solo para el otro:\n• `/deuda 2000 puchos` _(Vos le debés 2000 a él)_\n• `/deuda cholo 2000 puchos` _(Él te debe 2000 a vos)_\n\n🤝 *DEVOLUCIONES*\nPara ir achicando las deudas:\n• `/devolucion 500` _(Le devolviste 500 a él)_\n• `/devolucion cholo 500` _(Él te devolvió 500 a vos)_\n\n⚖️ *CUENTAS*\n• `/balance` _(Resumen de quién debe a quién en el mes)_",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        112
+      ],
+      "id": "3027d0fd-62cc-4ba0-a1f4-89b9b743c949",
+      "name": "Mensaje HELP",
+      "webhookId": "b9bb35e3-cd21-4444-a2cc-3869046c6025",
+      "credentials": {
+        "telegramApi": {
+          "id": "419CRr0N4sXvLrmC",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parsear Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Datos": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get row(s) in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mensaje HELP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "CaclcularBalance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CaclcularBalance": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b16e64ad-4045-4e5c-8104-bd5cfcacda81",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c800ad2b2d9edb30855d7a07cd91a932851216727b6c83c4f44f63bb72308c81"
+  },
+  "id": "qnRqWQLdq25BCoxt",
+  "tags": []
+}

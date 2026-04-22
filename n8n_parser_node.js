@@ -52,8 +52,6 @@ if (matchDevolucion) {
   const monto = parseFloat(matchDevolucion[2].replace(',', '.'));
   const concepto = matchDevolucion[3] || "Devolución de plata";
 
-  // Si ponés "/devolucion 500", YO estoy poniendo la plata para saldar deuda.
-  // Si ponés "/devolucion cholo 500", CHOLO me está dando la plata a mi.
   let quien_pago = senderName;
   if (explicitWho) {
     quien_pago = explicitWho === 'cholo' ? 'Cholo' : 'Lau';
