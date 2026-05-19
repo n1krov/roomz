@@ -15,119 +15,39 @@ const isLau = (senderId === lau_id);
 const senderName = isLau ? "Lau" : "Cholo";
 const otherName = isLau ? "Cholo" : "Lau";
 
+// Zona horaria robusta para Buenos Aires (evita errores a fin de mes)
+const optionsTZ = { timeZone: 'America/Argentina/Buenos_Aires' };
+const formatterMonth = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, month: 'long' });
+const formatterYear = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, year: 'numeric' });
+const formatterDate = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, day: '2-digit', month: '2-digit', year: 'numeric' });
+
 const act = new Date();
-const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-const mes_periodo = `${meses[act.getMonth()]}-${act.getFullYear()}`;
-const fecha = act.toLocaleDateString('es-AR');
+const mes_nombre = formatterMonth.format(act).toLowerCase();
+const anio = formatterYear.format(act);
+const mes_periodo = `${mes_nombre}-${anio}`;
+const fecha = formatterDate.format(act);
 const chatId = input.message.chat.id;
 
-// --- COMANDO: /HELP ---
-if (text.toLowerCase().startsWith('/help')) {
-  return [{
-    json: {
-      comando: "help",
-      Notificar_A: chatId,
-    }
-  }];
+// Calcular Periodo del Mes Anterior para el arrastre de deuda
+const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const currentMonthIndex = meses.indexOf(mes_nombre);
+let prevMonthIndex = currentMonthIndex - 1;
+let prevYear = parseInt(anio, 10);
+if (prevMonthIndex < 0) {
+  prevMonthIndex = 11;
+  prevYear -= 1;
 }
+const prev_mes_periodo = `${meses[prevMonthIndex]}-${prevYear}`;
 
-// --- COMANDO: /BALANCE ---
-if (text.toLowerCase().startsWith('/balance')) {
-  return [{
-    json: {
-      comando: "balance",
-      Mes_Periodo: mes_periodo,
-      Notificar_A: chatId
-    }
-  }];
-}
-
-// --- COMANDO: /DEVOLUCION ---
-// Regex soporta concepto opcional al final
-const regexDevolucion = /^\/devolucion(?:\s+(lau|cholo))?\s+(\d+(?:[.,]\d+)?)(?:\s+(.+))?$/i;
-const matchDevolucion = text.match(regexDevolucion);
-
-if (matchDevolucion) {
-  const explicitWho = matchDevolucion[1] ? matchDevolucion[1].toLowerCase() : null;
-  const monto = parseFloat(matchDevolucion[2].replace(',', '.'));
-  const concepto = matchDevolucion[3] || "Devolución de plata";
-
-  let quien_pago = senderName;
-  if (explicitWho) {
-    quien_pago = explicitWho === 'cholo' ? 'Cholo' : 'Lau';
+return [{
+  json: {
+    senderId: senderId,
+    senderName: senderName,
+    otherName: otherName,
+    fecha: fecha,
+    mes_periodo: mes_periodo,
+    prev_mes_periodo: prev_mes_periodo,
+    chatId: chatId,
+    messageText: text
   }
-
-  return [{
-    json: {
-      comando: "gasto", // Lo mandamos como gasto para que el calculador lo procese normal
-      ID: Date.now().toString(),
-      Fecha: fecha,
-      Mes_Periodo: mes_periodo,
-      Concepto: concepto,
-      Monto_Total: monto,
-      Quien_Pago: quien_pago,
-      Tipo_Reparto: 100, // Resta directo del balance
-      Notificar_A: chatId
-    }
-  }];
-}
-
-// --- COMANDO: /DEUDA (100%) ---
-const regexDeuda = /^\/deuda(?:\s+(lau|cholo))?\s+(\d+(?:[.,]\d+)?)\s+(.+)$/i;
-const matchDeuda = text.match(regexDeuda);
-
-if (matchDeuda) {
-  const explicitWho = matchDeuda[1] ? matchDeuda[1].toLowerCase() : null;
-  const monto = parseFloat(matchDeuda[2].replace(',', '.'));
-  const concepto = matchDeuda[3];
-
-  let quien_pago = otherName;
-  if (explicitWho) {
-    quien_pago = explicitWho === 'cholo' ? 'Lau' : 'Cholo';
-  }
-
-  return [{
-    json: {
-      comando: "gasto",
-      ID: Date.now().toString(),
-      Fecha: fecha,
-      Mes_Periodo: mes_periodo,
-      Concepto: concepto,
-      Monto_Total: monto,
-      Quien_Pago: quien_pago,
-      Tipo_Reparto: 100,
-      Notificar_A: chatId
-    }
-  }];
-}
-
-// --- COMANDO: /GASTO (50/50) ---
-const regexGasto = /^\/gasto(?:\s+(lau|cholo))?\s+(\d+(?:[.,]\d+)?)\s+(.+)$/i;
-const matchGasto = text.match(regexGasto);
-
-if (matchGasto) {
-  const explicitWho = matchGasto[1] ? matchGasto[1].toLowerCase() : null;
-  const monto = parseFloat(matchGasto[2].replace(',', '.'));
-  const concepto = matchGasto[3];
-
-  let quien_pago = senderName;
-  if (explicitWho) {
-    quien_pago = explicitWho === 'cholo' ? 'Cholo' : 'Lau';
-  }
-
-  return [{
-    json: {
-      comando: "gasto",
-      ID: Date.now().toString(),
-      Fecha: fecha,
-      Mes_Periodo: mes_periodo,
-      Concepto: concepto,
-      Monto_Total: monto,
-      Quien_Pago: quien_pago,
-      Tipo_Reparto: 50,
-      Notificar_A: chatId
-    }
-  }];
-}
-
-return [];
+}];

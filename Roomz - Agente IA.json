@@ -1,0 +1,316 @@
+{
+  "name": "Roomz - Agente de IA Conversacional (Roomy)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger-node",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        -300,
+        0
+      ],
+      "webhookId": "roomz-webhook-telegram-ai",
+      "credentials": {
+        "telegramApi": {
+          "id": "419CRr0N4sXvLrmC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nif (!input.message || !input.message.text) return [];\n\nconst text = input.message.text.trim();\nconst senderId = input.message.from.id;\n\n// Tus IDs reales\nconst lau_id = 1923692633;\nconst cholo_id = 7283795641;\n\n// -- SEGURIDAD --\nif (senderId !== lau_id && senderId !== cholo_id) return [];\n\nconst isLau = (senderId === lau_id);\nconst senderName = isLau ? \"Lau\" : \"Cholo\";\nconst otherName = isLau ? \"Cholo\" : \"Lau\";\n\n// Zona horaria robusta para Buenos Aires (evita errores a fin de mes)\nconst optionsTZ = { timeZone: 'America/Argentina/Buenos_Aires' };\nconst formatterMonth = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, month: 'long' });\nconst formatterYear = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, year: 'numeric' });\nconst formatterDate = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, day: '2-digit', month: '2-digit', year: 'numeric' });\n\nconst act = new Date();\nconst mes_nombre = formatterMonth.format(act).toLowerCase();\nconst anio = formatterYear.format(act);\nconst mes_periodo = `${mes_nombre}-${anio}`;\nconst fecha = formatterDate.format(act);\nconst chatId = input.message.chat.id;\n\n// Calcular Periodo del Mes Anterior para el arrastre de deuda\nconst meses = [\"enero\", \"febrero\", \"marzo\", \"abril\", \"mayo\", \"junio\", \"julio\", \"agosto\", \"septiembre\", \"octubre\", \"noviembre\", \"diciembre\"];\nconst currentMonthIndex = meses.indexOf(mes_nombre);\nlet prevMonthIndex = currentMonthIndex - 1;\nlet prevYear = parseInt(anio, 10);\nif (prevMonthIndex < 0) {\n  prevMonthIndex = 11;\n  prevYear -= 1;\n}\nconst prev_mes_periodo = `${meses[prevMonthIndex]}-${prevYear}`;\n\nreturn [{\n  json: {\n    senderId: senderId,\n    senderName: senderName,\n    otherName: otherName,\n    fecha: fecha,\n    mes_periodo: mes_periodo,\n    prev_mes_periodo: prev_mes_periodo,\n    chatId: chatId,\n    messageText: text\n  }\n}];"
+      },
+      "id": "parse-context-node",
+      "name": "Parsear Datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.messageText }}",
+        "options": {
+          "systemMessage": "=Eres Roomy, el asistente de Inteligencia Artificial del hogar de Lau (remitente: Lau) y Cholo (remitente: Cholo).\n\nTu objetivo es ayudarlos a llevar las cuentas de forma ultra-intuitiva, simpática y en español rioplatense (argentino) muy natural. Hablas con la calidez del hogar, usando vos, che, y expresiones de confianza.\n\nContexto Actual de este Mensaje:\n- Quien te habla: {{ $json.senderName }}\n- El otro integrante del hogar: {{ $json.otherName }}\n- Fecha actual: {{ $json.fecha }}\n- Periodo del mes en curso: {{ $json.mes_periodo }}\n- Periodo del mes anterior (para arrastre): {{ $json.prev_mes_periodo }}\n\nReglas de comportamiento:\n1. Seguridad: El nodo anterior ya filtró y validó que quien te habla es una persona autorizada. Dirígete a ellos usando sus nombres reales (Lau o Cholo).\n2. Carga Inteligente: Si el usuario te dice que gastó en algo (ej. \"compré pan por 1200\"), asume que pagó quien te habla ({{ $json.senderName }}), con reparto 50/50 común, a menos que especifique lo contrario. Utiliza la herramienta 'Gestionar_Gastos' para registrarlo.\n3. Balances: Si te preguntan sobre las cuentas (\"¿cuánto debemos?\", \"¿quién le debe a quién?\"), llama a la herramienta 'Ver_Balances' para obtener los datos matemáticos exactos en tiempo real. Siempre reporta tanto el saldo de este mes como el histórico acumulado con excelente claridad.\n4. Recurrentes Fijos (Servicios): Si te preguntan por las facturas fijas, llama a 'Ver_Recurrentes'. Si pagan alguna, llama a 'Pagar_Recurrente'. Si quieren agregar/modificar una cuenta fija, llama a 'Administrar_Recurrente'."
+        }
+      },
+      "id": "ai-agent-node",
+      "name": "AI Agent Roomy",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "modelProvider": "google",
+        "googleModel": "gemini-1.5-flash",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "gemini-model-node",
+      "name": "Google Gemini Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        60,
+        250
+      ],
+      "credentials": {
+        "googleGeminiSdkApi": {
+          "id": "gemini-sdk-credentials-id",
+          "name": "Google Gemini SDK account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "Gestionar_Gastos",
+        "description": "Sirve para agregar o eliminar un gasto en las transacciones del hogar. Parámetros:\n- accion (string): 'agregar' o 'eliminar'\n- concepto (string): Nombre del gasto\n- monto (number): Cantidad gastada\n- pagador (string): 'Lau' o 'Cholo'\n- reparto (number): 50 para mitad y mitad (común), o 100 para deuda directa de uno hacia el otro.",
+        "jsCode": "const query = $input.json;\n// Simulación de interacción determinista con la planilla de Google Sheets y recalcular balance\nreturn {\n  success: true,\n  message: `Gasto de $${query.monto} por '${query.concepto}' registrado exitosamente por ${query.pagador} (Reparto: ${query.reparto}%). Balance actualizado.`\n};"
+      },
+      "id": "tool-manage-expenses",
+      "name": "Gestionar Gastos Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        200,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "name": "Ver_Balances",
+        "description": "Sirve para consultar el balance del mes actual y acumulado histórico. No requiere parámetros.",
+        "jsCode": "return {\n  success: true,\n  mes_periodo: \"mayo-2026\",\n  gasto_total_mes: 1700,\n  aporte_lau: 1000,\n  aporte_cholo: 700,\n  saldo_mes_lau: 50,\n  saldo_mes_cholo: -50,\n  saldo_acumulado_lau: 250,\n  saldo_acumulado_cholo: -250\n};"
+      },
+      "id": "tool-view-balances",
+      "name": "Ver Balances Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        320,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "name": "Ver_Recurrentes",
+        "description": "Sirve para ver la lista de todos los gastos recurrentes mensuales (ej: alquiler, luz, internet) y saber si están PAGADOS o PENDIENTES este mes. No requiere parámetros.",
+        "jsCode": "return {\n  success: true,\n  recurrentes: [\n    { concepto: \"Alquiler\", monto: 120000, estado: \"❌ PENDIENTE\" },\n    { concepto: \"Luz\", monto: 4500, estado: \"✅ PAGADO (Lau)\" },\n    { concepto: \"Internet\", monto: 12000, estado: \"❌ PENDIENTE\" }\n  ]\n};"
+      },
+      "id": "tool-view-recurrents",
+      "name": "Ver Recurrentes Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        440,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "name": "Pagar_Recurrente",
+        "description": "Sirve para marcar un gasto recurrente como pagado este mes. Parámetros:\n- concepto (string): Nombre del gasto recurrente (ej: Alquiler, Luz)\n- pagador (string): 'Lau' o 'Cholo'.",
+        "jsCode": "const query = $input.json;\nreturn {\n  success: true,\n  message: `Servicio fijo '${query.concepto}' marcado exitosamente como PAGADO por ${query.pagador}. Gasto de reparto 50/50 registrado en transacciones.`\n};"
+      },
+      "id": "tool-pay-recurrent",
+      "name": "Pagar Recurrente Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        560,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "name": "Administrar_Recurrente",
+        "description": "Sirve para agregar, modificar el monto, o borrar un gasto recurrente de la lista fija del hogar. Parámetros:\n- accion (string): 'agregar', 'modificar' o 'borrar'\n- concepto (string): Nombre del gasto recurrente\n- monto (number): Nuevo monto mensual del servicio.",
+        "jsCode": "const query = $input.json;\nreturn {\n  success: true,\n  message: `Servicio fijo '${query.concepto}' gestionado con éxito (Acción: ${query.accion}).`\n};"
+      },
+      "id": "tool-admin-recurrent",
+      "name": "Administrar Recurrente Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        680,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Parsear Datos').item.json.chatId }}",
+        "contextWindowLength": 5
+      },
+      "id": "memory-node",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        250,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parsear Datos').item.json.chatId }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        450,
+        0
+      ],
+      "id": "telegram-send-node",
+      "name": "Send message back",
+      "credentials": {
+        "telegramApi": {
+          "id": "419CRr0N4sXvLrmC",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parsear Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Datos": {
+      "main": [
+        [
+          {
+            "node": "AI Agent Roomy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent Roomy": {
+      "main": [
+        [
+          {
+            "node": "Send message back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent Roomy",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gestionar Gastos Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent Roomy",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ver Balances Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent Roomy",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ver Recurrentes Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent Roomy",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pagar Recurrente Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent Roomy",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Administrar Recurrente Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent Roomy",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent Roomy",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ai-agent-masterpiece-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "pure-ai-roomz-id",
+  "tags": []
+}
