@@ -1,0 +1,227 @@
+{
+  "name": "Roomz - V2 Desacoplado",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "webhookId": "roomz-webhook-telegram-v2",
+      "credentials": {
+        "telegramApi": {
+          "id": "419CRr0N4sXvLrmC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nif (!input.message || !input.message.text) return [];\n\nconst text = input.message.text.trim();\nconst senderId = input.message.from.id;\n\n// Tus IDs reales\nconst lau_id = 1923692633;\nconst cholo_id = 7283795641;\n\n// -- SEGURIDAD --\nif (senderId !== lau_id && senderId !== cholo_id) return [];\n\nconst isLau = (senderId === lau_id);\nconst senderName = isLau ? \"Lau\" : \"Cholo\";\nconst otherName = isLau ? \"Cholo\" : \"Lau\";\n\n// Zona horaria robusta para Buenos Aires (evita errores a fin de mes)\nconst optionsTZ = { timeZone: 'America/Argentina/Buenos_Aires' };\nconst formatterMonth = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, month: 'long' });\nconst formatterYear = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, year: 'numeric' });\nconst formatterDate = new Intl.DateTimeFormat('es-AR', { ...optionsTZ, day: '2-digit', month: '2-digit', year: 'numeric' });\n\nconst act = new Date();\nconst mes_nombre = formatterMonth.format(act).toLowerCase();\nconst anio = formatterYear.format(act);\nconst mes_periodo = `${mes_nombre}-${anio}`;\nconst fecha = formatterDate.format(act);\nconst chatId = input.message.chat.id;\n\nreturn [{\n  json: {\n    senderId: senderId,\n    senderName: senderName,\n    otherName: otherName,\n    fecha: fecha,\n    mes_periodo: mes_periodo,\n    chatId: chatId,\n    messageText: text\n  }\n}];"
+      },
+      "id": "parsear-datos",
+      "name": "Parsear Datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "modelName": "models/llama3-8b-8192",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "groq-extractor-model",
+      "name": "Groq Llama 3 8B (Extractor)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [400, 200]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.messageText }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=Eres un procesador de datos JSON ultra-preciso. Tu única función es leer el mensaje del usuario y extraer la intención y las entidades en un objeto JSON estricto.\n\nRemitente actual: {{ $json.senderName }} (Asume este como pagador por defecto).\n\nACCIONES PERMITIDAS:\n1. \"registrar_gasto\": Compras casa (Reparto 50, Tipo Gasto)\n2. \"registrar_deuda\": Compras personales (Reparto 100, Tipo Deuda)\n3. \"ver_balance\": Pedir resúmenes\n4. \"servicio_consultar\": Ver lista servicios\n\nDevuelve SOLAMENTE el objeto JSON sin markdown."
+        }
+      },
+      "id": "extractor-chain",
+      "name": "Extractor JSON",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const rawStr = $input.first().json.text;\n  const cleanStr = rawStr.replace(/```json/g, '').replace(/```/g, '').trim();\n  const parsed = JSON.parse(cleanStr);\n  return { json: { ...$input.first().json, extraccion: parsed } };\n} catch(e) {\n  return { json: { error: \"Fallo el parseo JSON del LLM\", raw: $input.first().json.text } };\n}"
+      },
+      "id": "parse-json-code",
+      "name": "Parse JSON Seguro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 0]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.extraccion.accion }}",
+        "rules": {
+          "rules": [
+            {
+              "id": "ver-balance-route",
+              "value2": "ver_balance",
+              "output": 0
+            },
+            {
+              "id": "registrar-gasto-route",
+              "value2": "registrar_gasto",
+              "output": 1
+            }
+          ]
+        }
+      },
+      "id": "switch-node",
+      "name": "Switch Acciones",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [800, 0]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "sheetName": "Balance",
+        "options": {}
+      },
+      "id": "gsheets-get-gastos",
+      "name": "Google Sheets (Get Gastos)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1050, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const balanceData = $input.first().json;\n\n// Extracción simple desde la pestaña Balance de Google Sheets\nconst totalHistorico = balanceData.Gasto_Total_Historico || 0;\nconst deudaNeta = balanceData.Deuda_Neta || 0;\nconst quienDebe = balanceData.Quien_Debe || 'Nadie';\n\nlet balanceString = 'Están hechos, nadie le debe a nadie.';\nif (quienDebe === 'Cholo') {\n    balanceString = `Cholo le debe a Lau $${parseFloat(deudaNeta).toFixed(2)}`;\n} else if (quienDebe === 'Lau') {\n    balanceString = `Lau le debe a Cholo $${parseFloat(deudaNeta).toFixed(2)}`;\n}\n\nreturn { json: { \\n  balance: balanceString, \\n  total_historico: parseFloat(totalHistorico).toFixed(2), \\n  accion: \"ver_balance\"\\n} };"
+      },
+      "id": "calc-balance",
+      "name": "Calcular Balance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, -100]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetName": "Gastos",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Fecha": "={{ $('Parsear Datos').item.json.fecha }}",
+            "Pagador": "={{ $('Parsear JSON Seguro').item.json.extraccion.datos.pagador }}",
+            "Concepto": "={{ $('Parsear JSON Seguro').item.json.extraccion.datos.concepto }}",
+            "Monto": "={{ $('Parsear JSON Seguro').item.json.extraccion.datos.monto }}",
+            "Reparto": "={{ $('Parsear JSON Seguro').item.json.extraccion.datos.reparto }}",
+            "Tipo": "={{ $('Parsear JSON Seguro').item.json.extraccion.datos.tipo }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "gsheets-append-gasto",
+      "name": "Google Sheets (Append Gasto)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1050, 100]
+    },
+    {
+      "parameters": {
+        "modelName": "models/llama3-8b-8192",
+        "options": {
+          "temperature": 0.5
+        }
+      },
+      "id": "groq-formatter-model",
+      "name": "Groq Llama 3 8B (Formatter)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [1500, 200]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json }}",
+        "options": {
+          "systemMessage": "=Sos Catalina, la asistente virtual del hogar de Lau y Cholo. Hablás en un español rioplatense impecable, natural y relajado. Acabás de recibir los datos crudos del sistema. Redactá el mensaje de confirmación para enviarle a {{ $('Parsear Datos').item.json.senderName }}.\n\nREGLAS:\n- Usá viñetas o emojis lindos.\n- Resaltá montos en **negrita**.\n- Mantené siempre la buena onda."
+        }
+      },
+      "id": "formatter-chain",
+      "name": "Formateador Catalina",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [1500, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Parsear Datos').item.json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1700, 0],
+      "id": "telegram-send",
+      "name": "Telegram Send",
+      "credentials": {
+        "telegramApi": {
+          "id": "419CRr0N4sXvLrmC",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{"node": "Parsear Datos", "type": "main", "index": 0}]]
+    },
+    "Parsear Datos": {
+      "main": [[{"node": "Extractor JSON", "type": "main", "index": 0}]]
+    },
+    "Groq Llama 3 8B (Extractor)": {
+      "ai_languageModel": [[{"node": "Extractor JSON", "type": "ai_languageModel", "index": 0}]]
+    },
+    "Extractor JSON": {
+      "main": [[{"node": "Parse JSON Seguro", "type": "main", "index": 0}]]
+    },
+    "Parse JSON Seguro": {
+      "main": [[{"node": "Switch Acciones", "type": "main", "index": 0}]]
+    },
+    "Switch Acciones": {
+      "main": [
+        [{"node": "Google Sheets (Get Gastos)", "type": "main", "index": 0}],
+        [{"node": "Google Sheets (Append Gasto)", "type": "main", "index": 0}]
+      ]
+    },
+    "Google Sheets (Get Gastos)": {
+      "main": [[{"node": "Calcular Balance", "type": "main", "index": 0}]]
+    },
+    "Calcular Balance": {
+      "main": [[{"node": "Formateador Catalina", "type": "main", "index": 0}]]
+    },
+    "Google Sheets (Append Gasto)": {
+      "main": [[{"node": "Formateador Catalina", "type": "main", "index": 0}]]
+    },
+    "Groq Llama 3 8B (Formatter)": {
+      "ai_languageModel": [[{"node": "Formateador Catalina", "type": "ai_languageModel", "index": 0}]]
+    },
+    "Formateador Catalina": {
+      "main": [[{"node": "Telegram Send", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
